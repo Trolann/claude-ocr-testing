@@ -11,8 +11,7 @@ from enum import Enum
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
 from PIL import Image
-import base64
-import io
+from image_distortions import ImageDistorter
 
 # I'm doing AI test validation for the Claude API related to image OCR for a form.
 # I need a python script which does the following:
@@ -89,17 +88,13 @@ class OCRValidator:
     def encode_image(self, image_path: Path) -> str:
         """Convert image to base64 string"""
         with Image.open(image_path) as img:
-            buffered = io.BytesIO()
-            img.save(buffered, format=img.format)
-            return base64.b64encode(buffered.getvalue()).decode("utf-8")
+            return ImageDistorter.encode_image(img)
 
     def apply_distortions(self, image_path: Path, distortions: List[str]) -> str:
-        """
-        Apply specified distortions to an image
-        Note: This is a placeholder - implement actual distortion logic based on your needs
-        """
-        # TODO: Implement actual distortion logic
-        return self.encode_image(image_path)
+        """Apply specified distortions to an image"""
+        with Image.open(image_path) as img:
+            distorted = ImageDistorter.apply_distortions(img, distortions)
+            return ImageDistorter.encode_image(distorted)
 
     def get_claude_extraction(
         self, image_base64: str, system_prompt: str
