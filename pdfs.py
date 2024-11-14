@@ -137,19 +137,111 @@ class PDFProcessor:
 # Example usage:
 if __name__ == "__main__":
     # Initialize processor with your fillable PDF
-    processor = PDFProcessor("template.pdf")
+    processor = PDFProcessor("Form-10-10EZ.pdf")
 
     # Get all fillable fields - now with readable names
     fields = processor.get_form_fields()
-    print("Available fields:", fields)
+    from pprint import pprint
+    print("Available fields:")
+    #pprint(fields)
 
-    # Example data using readable field names
     data = {
-        "LastFirstMiddle": "John Doe",
-        "SSN": "123-45-6789",
-        # Add other fields as needed
+        'ChildsDOB': '',
+        'ChildsName': '',
+        'ChildsSSN': '',
+        'CompanyName': '',
+        'CompleteAddress': '',
+        'CompletePhoneNumber': '',
+        'DOB': '',
+        'DateChildBecameYourDependent': '',
+        'DateOfMarriage': '',
+        'DateOfRetirement': '',
+        'DateSigned': '',
+        'Designee': '',
+        'DischargeType': '',
+        'EffectiveDate': '',
+        'EmailAddress': '',
+        'EmergencyContactName': '',
+        'EmergencyContactTelephoneNumber': '',
+        'ExpensesPaifByDependentCHild': '',
+        'ExposedToTheFollowing': '/Off',
+        'ExposedToTheFollowing[1]': '/Off',
+        'ExposedToTheFollowing[2]': '/Off',
+        'ExposedToTheFollowing[3]': '/Off',
+        'ExposedToTheFollowing[4]': '/Off',
+        'ExposedToTheFollowing[5]': '/Off',
+        'ExposedToTheFollowing[6]': '/Off',
+        'ExposedToTheFollowing[7]': '/Off',
+        'ExposedToTheFollowing[8]': '/Off',
+        'ExposedToTheFollowing[9]': '/Off',
+        'FromDate_3B': '',
+        'FromDate_3C': '',
+        'FromDate_3D': '',
+        'FutureDischargeDate': '',
+        'GroupCode': '',
+        'HealthInsuranceInformation': '',
+        'HomeAddress_City': '',
+        'HomeAddress_County': '',
+        'HomeAddress_State': '',
+        'HomeAddress_Street': '',
+        'HomeAddress_ZipCode': '',
+        'HomeTelephoneNumber': '',
+        'LastBranchOfService': '',
+        'LastDischargeDate': '',
+        'LastEntryDate': '',
+        'LastFirstMiddle': 'Buck, Jamie C',
+        'MailingAddress_City': '',
+        'MailingAddress_County': '',
+        'MailingAddress_State': '',
+        'MailingAddress_Street': '',
+        'MailingAddress_ZipCode': '',
+        'MbileTelephoneNumber': '',
+        'MedicareClaimNumber': '',
+        'MilitaryServiceNumber': '',
+        'MothersMaidenName': '',
+        'NameOfPolicyHodler': '',
+        'NextOfKinAddress': '',
+        'NextOfKinName': '',
+        'NextOfKinRelationship': '',
+        'NextOfKinTelephoneNumber': '',
+        'PlaceOfBirth': '',
+        'PolicyNumber': '',
+        'PreferredLanguage': '',
+        'PreferredNameForVeteran': '',
+        'PreferredVACenter': '',
+        'Race': '/Off',
+        'Race[1]': '/Off',
+        'Race[2]': '/Off',
+        'Race[3]': '/Off',
+        'Race[4]': '/Off',
+        'Race[5]': '/Off',
+        'Religion': '',
+        'SSN': '',
+        'Section7_Child_Q1': '',
+        'Section7_Child_Q2': '',
+        'Section7_Child_Q3': '',
+        'Section7_Spouse_Q1': '',
+        'Section7_Spouse_Q2': '',
+        'Section7_Spouse_Q3': '',
+        'Section7_Veteran_Q1': '',
+        'Section7_Veteran_Q2': '',
+        'Section7_Veteran_Q3': '',
+        'Section8_Q1': '',
+        'Section8_Q2': '',
+        'Section8_Q3': '',
+        'SignatureOfApplicant': '',
+        'SpecifyOther': '',
+        'SpouseAddressAndTelephoneNumber': '',
+        'SpousesDOB': '',
+        'SpousesName': '',
+        'SpousesSSN': '',
+        'ToDate_3B': '',
+        'ToDate_3C': '',
+        'ToDate_3D': '',
+        'TypeOfBenefitsApplyingFor': '/Off',
+        'TypeOfBenefitsApplyingFor[1]': '/Off'
     }
 
-    # Fill the form and save
+    # # Fill the form and save
     processor.fill_form(data, "filled_form.pdf")
 
