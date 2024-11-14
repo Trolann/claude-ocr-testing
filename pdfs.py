@@ -22,33 +22,72 @@ def set_need_appearances_writer(writer):
     except Exception as e:
         print(f"Error setting up appearances: {str(e)}")
 
+
+def get_checkbox_states(field_obj):
+    """Extract available states for a checkbox field."""
+    states = []
+
+    # Check for appearance states in the field
+    if "/AP" in field_obj:
+        ap_dict = field_obj["/AP"].get_object()
+        if "/N" in ap_dict:
+            n_dict = ap_dict["/N"].get_object()
+            states.extend(k for k in n_dict.keys() if k != "/Off")
+
+    # Check for states in field's kids
+    if "/Kids" in field_obj:
+        for kid in field_obj["/Kids"]:
+            kid_obj = kid.get_object()
+            if "/AP" in kid_obj:
+                ap_dict = kid_obj["/AP"].get_object()
+                if "/N" in ap_dict:
+                    n_dict = ap_dict["/N"].get_object()
+                    states.extend(k for k in n_dict.keys() if k != "/Off")
+
+    # Remove duplicates while preserving order
+    return list(OrderedDict.fromkeys(states))
+
+
 def find_and_update_checkbox(fields, target_name, value):
     """Recursively find and update checkbox fields."""
     for field in fields:
         field_obj = field.get_object()
-        
+
+        # Function to update field value
+        def update_field(obj):
+            # Get available checked states for this checkbox
+            checked_states = get_checkbox_states(obj)
+            if not checked_states:
+                checked_states = ['/1']  # Default if no states found
+
+            # Choose appropriate state based on value
+            checkbox_value = checked_states[0] if value else "/Off"
+
+            print(f"Initial field state:")
+            print(f"Value: {obj.get('/V', 'None')}")
+            print(f"States: {checked_states + ['/Off']}")
+            print(f"Found target field: {target_name}")
+
+            obj[NameObject("/V")] = NameObject(checkbox_value)
+            if "/AS" in obj:
+                obj[NameObject("/AS")] = NameObject(checkbox_value)
+            return True
+
         # Check if this is a parent field with kids
         if "/Kids" in field_obj:
             for kid in field_obj["/Kids"]:
                 kid_obj = kid.get_object()
                 if "/T" in kid_obj and target_name in kid_obj["/T"]:
-                    checkbox_value = "/Yes" if value else "/Off"
-                    kid_obj[NameObject("/V")] = NameObject(checkbox_value)
-                    if "/AS" in kid_obj:
-                        kid_obj[NameObject("/AS")] = NameObject(checkbox_value)
-                    return True
+                    return update_field(kid_obj)
             if find_and_update_checkbox(field_obj["/Kids"], target_name, value):
                 return True
 
         # Check if this is the target field
         if "/T" in field_obj and target_name in field_obj["/T"]:
-            checkbox_value = "/Yes" if value else "/Off"
-            field_obj[NameObject("/V")] = NameObject(checkbox_value)
-            if "/AS" in field_obj:
-                field_obj[NameObject("/AS")] = NameObject(checkbox_value)
-            return True
+            return update_field(field_obj)
 
     return False
+
 
 class PDFProcessor:
     def __init__(self, input_pdf_path):
@@ -103,24 +142,25 @@ class PDFProcessor:
         Fill PDF form with given data and save to output_path.
 
         Args:
-            data_dict (dict): Dictionary with human-readable field names as keys
+            data_dict (dict): Dictionary with field names as keys and values:
+                             - For text fields: string values
+                             - For checkboxes: boolean values (True/False)
             output_path (str): Path where to save the filled PDF
         """
         # Create PDF reader and writer
         reader = PdfReader(self.input_pdf_path)
         writer = PdfWriter()
         writer.clone_reader_document_root(reader)
-        
+
         # Get AcroForm and fields
         if "/AcroForm" in writer._root_object:
             fields = writer._root_object["/AcroForm"]["/Fields"]
-        
+
             # Process each field in the data dictionary
             for field_name, value in data_dict.items():
-                if isinstance(value, bool) or value in ['Yes', 'On', True, '/1', '/Yes', 1, 'Off', False, '/Off', 0]:
-                    # Handle checkbox
-                    checkbox_value = value if isinstance(value, bool) else value in ['Yes', 'On', True, '/1', '/Yes', 1]
-                    find_and_update_checkbox(fields, field_name, checkbox_value)
+                if isinstance(value, bool):
+                    # Handle checkbox using boolean value
+                    find_and_update_checkbox(fields, field_name, value)
                 else:
                     # Handle text field
                     for field in fields:
@@ -137,7 +177,7 @@ class PDFProcessor:
             writer.write(output_file)
 
     def get_form_fields(self):
-        """Return an ordered dictionary of all fillable form fields with human-readable names."""
+        """Return an ordered dictionary of all fillable form fields with their current values."""
         fields = OrderedDict()
 
         for page_num, page in enumerate(self.template_pdf.pages):
@@ -164,11 +204,11 @@ class PDFProcessor:
                     if annotation.V:
                         value = str(annotation.V)
                         if is_checkbox:
-                            # Convert checkbox values to consistent format
-                            value = 'Yes' if value in ['/Yes', '/1'] else 'Off'
+                            # Convert checkbox values to boolean
+                            value = value != "/Off"
                         fields[decoded_key] = value
                     else:
-                        fields[decoded_key] = "Off" if is_checkbox else ""
+                        fields[decoded_key] = False if is_checkbox else ""
 
         return fields
 
@@ -212,103 +252,11 @@ class PDFProcessor:
 
 # Example usage:
 if __name__ == "__main__":
-    # Initialize processor with your fillable PDF
+    # Sample data using boolean values for checkboxes
     data = OrderedDict([
-        ('TypeOfBenefitsApplyingFor', '1'),
-        ('TypeOfBenefitsApplyingFor[1]', 'Off'),
-        ('MothersMaidenName', ''),
-        ('LastFirstMiddle', ''),
-        ('PreferredNameForVeteran', ''),
-        ('Race', '/Off'),
-        ('Race[2]', '/Off'),
-        ('Race[3]', '/Off'),
-        ('Race[1]', '/Off'),
-        ('Race[4]', '/Off'),
-        ('Race[5]', '/Off'),
-        ('SSN', ''),
-        ('DOB', ''),
-        ('PlaceOfBirth', ''),
-        ('Religion', ''),
-        ('PreferredLanguage', ''),
-        ('MailingAddress_Street', ''),
-        ('MailingAddress_City', ''),
-        ('MailingAddress_State', ''),
-        ('MailingAddress_ZipCode', ''),
-        ('MailingAddress_County', ''),
-        ('HomeTelephoneNumber', ''),
-        ('MbileTelephoneNumber', ''),
-        ('EmailAddress', ''),
-        ('HomeAddress_State', ''),
-        ('HomeAddress_Street', ''),
-        ('HomeAddress_City', ''),
-        ('HomeAddress_ZipCode', ''),
-        ('HomeAddress_County', ''),
-        ('NextOfKinAddress', ''),
-        ('NextOfKinName', ''),
-        ('NextOfKinRelationship', ''),
-        ('NextOfKinTelephoneNumber', ''),
-        ('EmergencyContactTelephoneNumber', ''),
-        ('EmergencyContactName', ''),
-        ('Designee', ''),
-        ('PreferredVACenter', ''),
-        ('LastBranchOfService', ''),
-        ('LastEntryDate', ''),
-        ('LastDischargeDate', ''),
-        ('FutureDischargeDate', ''),
-        ('DischargeType', ''),
-        ('MilitaryServiceNumber', ''),
-        ('FromDate_3C', ''),
-        ('ToDate_3C', ''),
-        ('ExposedToTheFollowing', '/Off'),
-        ('ExposedToTheFollowing[1]', '/Off'),
-        ('ExposedToTheFollowing[7]', '/Off'),
-        ('FromDate_3B', ''),
-        ('ToDate_3B', ''),
-        ('ExposedToTheFollowing[2]', '/Off'),
-        ('ExposedToTheFollowing[3]', '/Off'),
-        ('ExposedToTheFollowing[4]', '/Off'),
-        ('ExposedToTheFollowing[5]', '/Off'),
-        ('ExposedToTheFollowing[6]', '/Off'),
-        ('ExposedToTheFollowing[8]', '/Off'),
-        ('ExposedToTheFollowing[9]', '/Off'),
-        ('SpecifyOther', ''),
-        ('ToDate_3D', ''),
-        ('FromDate_3D', ''),
-        ('HealthInsuranceInformation', ''),
-        ('NameOfPolicyHodler', ''),
-        ('PolicyNumber', ''),
-        ('GroupCode', ''),
-        ('EffectiveDate', ''),
-        ('MedicareClaimNumber', ''),
-        ('SpousesName', ''),
-        ('ChildsName', ''),
-        ('SpousesSSN', ''),
-        ('ChildsSSN', ''),
-        ('ChildsDOB', ''),
-        ('SpousesDOB', ''),
-        ('DateChildBecameYourDependent', ''),
-        ('DateOfMarriage', ''),
-        ('SpouseAddressAndTelephoneNumber', ''),
-        ('ExpensesPaifByDependentCHild', ''),
-        ('DateOfRetirement', ''),
-        ('CompanyName', ''),
-        ('CompleteAddress', ''),
-        ('CompletePhoneNumber', ''),
-        ('Section7_Veteran_Q1', ''),
-        ('Section7_Spouse_Q1', ''),
-        ('Section7_Child_Q1', ''),
-        ('Section7_Veteran_Q2', ''),
-        ('Section7_Spouse_Q2', ''),
-        ('Section7_Child_Q2', ''),
-        ('Section7_Veteran_Q3', ''),
-        ('Section7_Spouse_Q3', ''),
-        ('Section7_Child_Q3', ''),
-        ('Section8_Q1', ''),
-        ('Section8_Q2', ''),
-        ('Section8_Q3', ''),
-        ('DateSigned', ''),
-        ('SignatureOfApplicant', '')]
-        )
+        ('TypeOfBenefitsApplyingFor[0]', False),  # Will check the box
+        ('TypeOfBenefitsApplyingFor[1]', True)  # Will uncheck the box
+    ])
 
     try:
         # Initialize processor with your fillable PDF
@@ -322,15 +270,10 @@ if __name__ == "__main__":
         pprint(fields)
 
         # Fill the form and save
-        # Delete the filled_form.pdf if it already exists
         if os.path.exists("filled_form.pdf"):
             os.remove("filled_form.pdf")
         processor.fill_form(data, "filled_form.pdf")
         print("\nForm has been filled and saved as 'filled_form.pdf'")
-
-        # Optional: Convert to images and extract text
-        # image_paths = processor.convert_to_images()
-        # print(f"\nConverted PDF to images: {image_paths}")
 
     except Exception as e:
         print(f"An error occurred: {str(e)}")
