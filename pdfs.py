@@ -74,8 +74,12 @@ class PDFProcessor:
                 for annotation in page.Annots:
                     if annotation.T and str(annotation.T) in encoded_data:
                         value = encoded_data[str(annotation.T)]
-                        annotation.update(pdfrw.PdfDict(V=value))
-                        annotation.update(pdfrw.PdfDict(AP=""))
+                        if value in ['/1', '/0', '/Off']:  # Checkbox values
+                            # Set both the value and appearance state for checkboxes
+                            annotation.update(pdfrw.PdfDict(V=value, AS=value if value == '/1' else '/Off'))
+                        else:  # Text fields
+                            annotation.update(pdfrw.PdfDict(V=value))
+                        annotation.update(pdfrw.PdfDict(AP=''))
 
         pdfrw.PdfWriter().write(output_path, template)
 
