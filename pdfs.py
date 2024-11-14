@@ -3,10 +3,52 @@ import pdf2image
 import pytesseract
 from pdf2image import convert_from_path
 from pypdf import PdfReader, PdfWriter
-from pypdf.generic import NameObject, BooleanObject, TextStringObject
+from pypdf.generic import NameObject, BooleanObject, TextStringObject, IndirectObject
 import os
 from collections import OrderedDict
 
+
+def set_need_appearances_writer(writer):
+    """Set up the writer to handle form field appearances."""
+    try:
+        catalog = writer._root_object
+        if "/AcroForm" not in catalog:
+            writer._root_object.update({
+                NameObject("/AcroForm"): IndirectObject(len(writer._objects), 0, writer)
+            })
+
+        need_appearances = NameObject("/NeedAppearances")
+        writer._root_object["/AcroForm"][need_appearances] = BooleanObject(True)
+    except Exception as e:
+        print(f"Error setting up appearances: {str(e)}")
+
+def find_and_update_checkbox(fields, target_name, value):
+    """Recursively find and update checkbox fields."""
+    for field in fields:
+        field_obj = field.get_object()
+        
+        # Check if this is a parent field with kids
+        if "/Kids" in field_obj:
+            for kid in field_obj["/Kids"]:
+                kid_obj = kid.get_object()
+                if "/T" in kid_obj and target_name in kid_obj["/T"]:
+                    checkbox_value = "/Yes" if value else "/Off"
+                    kid_obj[NameObject("/V")] = NameObject(checkbox_value)
+                    if "/AS" in kid_obj:
+                        kid_obj[NameObject("/AS")] = NameObject(checkbox_value)
+                    return True
+            if find_and_update_checkbox(field_obj["/Kids"], target_name, value):
+                return True
+
+        # Check if this is the target field
+        if "/T" in field_obj and target_name in field_obj["/T"]:
+            checkbox_value = "/Yes" if value else "/Off"
+            field_obj[NameObject("/V")] = NameObject(checkbox_value)
+            if "/AS" in field_obj:
+                field_obj[NameObject("/AS")] = NameObject(checkbox_value)
+            return True
+
+    return False
 
 class PDFProcessor:
     def __init__(self, input_pdf_path):
@@ -64,90 +106,33 @@ class PDFProcessor:
             data_dict (dict): Dictionary with human-readable field names as keys
             output_path (str): Path where to save the filled PDF
         """
-        # First fill using pdfrw for text fields
-        template = self.template_pdf
-
-        # Create a mapping of encoded field names for lookup
-        encoded_data = {}
-        for page in template.pages:
-            if page.Annots:
-                for annotation in page.Annots:
-                    if annotation.T:
-                        encoded_name = str(annotation.T)
-                        decoded_name = self.decode_pdf_field_name(encoded_name)
-                        if decoded_name in data_dict:
-                            encoded_data[encoded_name] = data_dict[decoded_name]
-
-        # Fill in the fields using encoded names
-        for page in template.pages:
-            if page.Annots:
-                for annotation in page.Annots:
-                    if annotation.T and str(annotation.T) in encoded_data:
-                        value = encoded_data[str(annotation.T)]
-
-                        if not self.is_checkbox(annotation):
-                            annotation.update(pdfrw.PdfDict(
-                                V=value,
-                                DV=value,
-                                AP=''
-                            ))
-
-        # Write intermediate PDF
-        writer = pdfrw.PdfWriter()
-        writer.write(output_path, template)
-
-        # Now handle checkboxes using pypdf
-        reader = PdfReader(output_path)
+        # Create PDF reader and writer
+        reader = PdfReader(self.input_pdf_path)
         writer = PdfWriter()
+        writer.clone_reader_document_root(reader)
+        
+        # Get AcroForm and fields
+        if "/AcroForm" in writer._root_object:
+            fields = writer._root_object["/AcroForm"]["/Fields"]
+        
+            # Process each field in the data dictionary
+            for field_name, value in data_dict.items():
+                if isinstance(value, bool) or value in ['Yes', 'On', True, '/1', '/Yes', 1, 'Off', False, '/Off', 0]:
+                    # Handle checkbox
+                    checkbox_value = value if isinstance(value, bool) else value in ['Yes', 'On', True, '/1', '/Yes', 1]
+                    find_and_update_checkbox(fields, field_name, checkbox_value)
+                else:
+                    # Handle text field
+                    for field in fields:
+                        field_obj = field.get_object()
+                        if "/T" in field_obj and field_name == str(field_obj["/T"]):
+                            field_obj[NameObject("/V")] = TextStringObject(str(value))
+                            break
 
-        for page in reader.pages:
-            writer.add_page(page)
+            # Ensure proper appearance of form fields
+            set_need_appearances_writer(writer)
 
-        # Get form fields
-        if '/AcroForm' in reader.trailer:
-            writer.add_form_fields()
-
-        form = reader.get_form_text_fields()
-
-        # Update each form field
-        for page in reader.pages:
-            if '/Annots' in page:
-                for annot in page['/Annots']:
-                    if annot is None:
-                        continue
-
-                    writer_annot = annot.get_object()
-                    field_name = writer_annot.get('/T', '')
-
-                    if field_name in data_dict:
-                        field_value = data_dict[field_name]
-                        field_type = writer_annot.get('/FT', '')
-
-                        if field_type == '/Btn':  # Checkbox
-                            if isinstance(field_value, bool):
-                                checkbox_value = field_value
-                            else:
-                                checkbox_value = field_value in ['Yes', 'On', True, '/1', '/Yes', 1]
-
-                            if checkbox_value:
-                                writer_annot.update({
-                                    NameObject("/V"): NameObject("/Yes"),
-                                    NameObject("/AS"): NameObject("/Yes"),
-                                    NameObject("/DV"): NameObject("/Yes")
-                                })
-                            else:
-                                writer_annot.update({
-                                    NameObject("/V"): NameObject("/Off"),
-                                    NameObject("/AS"): NameObject("/Off"),
-                                    NameObject("/DV"): NameObject("/Off")
-                                })
-                        elif field_type == '/Tx':  # Text field
-                            writer_annot.update({
-                                NameObject("/V"): TextStringObject(str(field_value)),
-                                NameObject("/DV"): TextStringObject(str(field_value))
-                            })
-
-        # Save the final PDF with both text fields and checkboxes
+        # Save the filled PDF
         with open(output_path, 'wb') as output_file:
             writer.write(output_file)
 
