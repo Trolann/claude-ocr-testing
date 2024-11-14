@@ -95,7 +95,7 @@ class PDFProcessor:
 if __name__ == "__main__":
     # Initialize processor with your fillable PDF
     data = OrderedDict([
-        ('TypeOfBenefitsApplyingFor', '/Yes'),
+        ('TypeOfBenefitsApplyingFor', '/1'),
         ('TypeOfBenefitsApplyingFor[1]', 'Off'),
         ('MothersMaidenName', ''),
         ('LastFirstMiddle', ''),
