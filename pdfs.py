@@ -45,14 +45,9 @@ class PDFProcessor:
 
     def get_form_fields(self):
         """Return an ordered dictionary of all fillable form fields."""
-        fields = OrderedDict()
-        
-        # Get all form fields
-        for page in self.reader.pages:
-            for field_name, field in page.get_form_text_fields().items():
-                fields[field_name] = field
-                
-        return fields
+        if self.reader.formfields:
+            return OrderedDict(self.reader.formfields)
+        return OrderedDict()
 
     def convert_to_images(self, output_dir="images/"):
         """
