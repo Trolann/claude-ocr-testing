@@ -249,14 +249,14 @@ if __name__ == "__main__":
         ('DateSigned', ''),
         ('SignatureOfApplicant', '')]
         )
-    processor = PDFProcessor("Form-10-10EZ2.pdf")
+    processor = PDFProcessor("Form-10-10EZ.pdf")
 
     # Get all fillable fields - now with readable names
     fields = processor.get_form_fields()
     from pprint import pprint
     print("Available fields:")
-    pprint(fields)
+    #pprint(fields)
 
     # Fill the form and save
-    #processor.fill_form(data, "filled_form.pdf")
+    processor.fill_form(data, "filled_form.pdf")
 
