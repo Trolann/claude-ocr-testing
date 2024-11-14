@@ -2,7 +2,7 @@ import pdfrw
 import pdf2image
 import pytesseract
 from pdf2image import convert_from_path
-from PyPDF2 import PdfReader
+from PyPDF2 import PdfReader, PdfWriter
 from PyPDF2.generic import NameObject
 import os
 from collections import OrderedDict
@@ -48,6 +48,14 @@ class PDFProcessor:
         hex_data = field_name.encode("utf-16-be").hex().upper()
         return f"<FEFF{hex_data}>"
 
+    def is_checkbox(self, annotation):
+        """
+        Determine if a form field is a checkbox based on its properties.
+        """
+        if hasattr(annotation, 'FT'):
+            return str(annotation.FT) == '/Btn'
+        return False
+
     def fill_form(self, data_dict, output_path):
         """
         Fill PDF form with given data and save to output_path.
@@ -75,15 +83,73 @@ class PDFProcessor:
                 for annotation in page.Annots:
                     if annotation.T and str(annotation.T) in encoded_data:
                         value = encoded_data[str(annotation.T)]
-                        if value in ['Yes', 'On', True, '/1']:  # Checkbox checked
-                            annotation.update(pdfrw.PdfDict(V=NameObject('/Yes'), AS=NameObject('/Yes')))
-                        elif value in ['No', 'Off', False, '/0', '/Off']:  # Checkbox unchecked
-                            annotation.update(pdfrw.PdfDict(V=NameObject('/Off'), AS=NameObject('/Off')))
-                        else:  # Text fields
-                            annotation.update(pdfrw.PdfDict(V=value))
-                        annotation.update(pdfrw.PdfDict(AP=''))
 
-        pdfrw.PdfWriter().write(output_path, template)
+                        if self.is_checkbox(annotation):
+                            # Handle checkbox fields
+                            if value in ['Yes', 'On', True, '/1', '/Yes']:
+                                annotation.update(pdfrw.PdfDict(
+                                    V=pdfrw.objects.pdfname.BasePdfName('/Yes'),
+                                    AS=pdfrw.objects.pdfname.BasePdfName('/Yes'),
+                                    DV=pdfrw.objects.pdfname.BasePdfName('/Yes')
+                                ))
+                            else:  # Unchecked state
+                                annotation.update(pdfrw.PdfDict(
+                                    V=pdfrw.objects.pdfname.BasePdfName('/Off'),
+                                    AS=pdfrw.objects.pdfname.BasePdfName('/Off'),
+                                    DV=pdfrw.objects.pdfname.BasePdfName('/Off')
+                                ))
+                        else:  # Handle text fields
+                            annotation.update(pdfrw.PdfDict(
+                                V=value,
+                                DV=value,  # Set default value
+                                AP=''  # Remove appearance stream
+                            ))
+
+        # Write the filled PDF
+        writer = pdfrw.PdfWriter()
+        writer.write(output_path, template)
+
+        # Verify checkbox values using PyPDF2
+        self._verify_checkboxes(output_path, data_dict)
+
+    def _verify_checkboxes(self, pdf_path, data_dict):
+        """
+        Verify and fix checkbox values using PyPDF2 as a backup.
+        """
+        reader = PdfReader(pdf_path)
+        writer = PdfWriter()
+
+        for page in reader.pages:
+            writer.add_page(page)
+            if '/Annots' in page:
+                for annotation in page['/Annots']:
+                    if annotation is None:
+                        continue
+
+                    writer_annot = annotation.get_object()
+                    field_name = writer_annot.get('/T')
+
+                    if field_name in data_dict:
+                        value = data_dict[field_name]
+
+                        # Update checkbox values
+                        if writer_annot.get('/FT') == '/Btn':  # Is checkbox
+                            if value in ['Yes', 'On', True, '/1', '/Yes']:
+                                writer_annot.update({
+                                    NameObject("/V"): NameObject("/Yes"),
+                                    NameObject("/AS"): NameObject("/Yes"),
+                                    NameObject("/DV"): NameObject("/Yes")
+                                })
+                            else:
+                                writer_annot.update({
+                                    NameObject("/V"): NameObject("/Off"),
+                                    NameObject("/AS"): NameObject("/Off"),
+                                    NameObject("/DV"): NameObject("/Off")
+                                })
+
+        # Save the verified PDF
+        with open(pdf_path, 'wb') as output_file:
+            writer.write(output_file)
 
     def get_form_fields(self):
         """Return an ordered dictionary of all fillable form fields with human-readable names."""
@@ -98,48 +164,55 @@ class PDFProcessor:
                         # Get the y-coordinate (vertical position) from the annotation rectangle
                         y_pos = float(annot.Rect[1])
                         annotations.append((y_pos, annot))
-                
+
                 # Sort by y-position in descending order (top to bottom)
                 annotations.sort(key=lambda x: x[0], reverse=True)
-                
+
                 # Process sorted annotations
                 for _, annotation in annotations:
                     raw_key = str(annotation.T)
                     decoded_key = self.decode_pdf_field_name(raw_key)
+
+                    # Determine if field is a checkbox
+                    is_checkbox = self.is_checkbox(annotation)
+
                     if annotation.V:
-                        fields[decoded_key] = str(annotation.V)
+                        value = str(annotation.V)
+                        if is_checkbox:
+                            # Convert checkbox values to consistent format
+                            value = 'Yes' if value in ['/Yes', '/1'] else 'Off'
+                        fields[decoded_key] = value
                     else:
-                        fields[decoded_key] = ""
+                        fields[decoded_key] = "Off" if is_checkbox else ""
 
         return fields
 
-    def convert_to_images(self, pdf_path, output_dir="images/"):
+    def convert_to_images(self, output_dir="images/"):
         """
         Convert PDF to images (one per page).
 
         Args:
-            pdf_path (str): Path to PDF file
             output_dir (str): Directory to save images
 
         Returns:
             list: Paths to generated images
         """
         os.makedirs(output_dir, exist_ok=True)
-        images = convert_from_path(pdf_path)
+        images = convert_from_path(self.input_pdf_path)
 
         image_paths = []
         for i, image in enumerate(images):
-            image_path = os.path.join(output_dir, f"page_{i+1}.png")
+            image_path = os.path.join(output_dir, f"page_{i + 1}.png")
             image.save(image_path, "PNG")
             image_paths.append(image_path)
 
         return image_paths
 
-    def extract_text_from_pdf(self, pdf_path):
+    def extract_text_from_pdf(self):
         """
         Extract text content from PDF.
         """
-        reader = PdfReader(pdf_path)
+        reader = PdfReader(self.input_pdf_path)
         text = ""
         for page in reader.pages:
             text += page.extract_text() + "\n"
@@ -151,12 +224,11 @@ class PDFProcessor:
         """
         return pytesseract.image_to_string(image_path)
 
-
 # Example usage:
 if __name__ == "__main__":
     # Initialize processor with your fillable PDF
     data = OrderedDict([
-        ('TypeOfBenefitsApplyingFor', 'Yes'),
+        ('TypeOfBenefitsApplyingFor', '/Yes'),
         ('TypeOfBenefitsApplyingFor[1]', 'Off'),
         ('MothersMaidenName', ''),
         ('LastFirstMiddle', ''),
@@ -251,14 +323,26 @@ if __name__ == "__main__":
         ('DateSigned', ''),
         ('SignatureOfApplicant', '')]
         )
-    processor = PDFProcessor("Form-10-10EZ.pdf")
+    try:
+        # Initialize processor with your fillable PDF
+        processor = PDFProcessor("Form-10-10EZ.pdf")
 
-    # Get all fillable fields - now with readable names
-    fields = processor.get_form_fields()
-    from pprint import pprint
-    print("Available fields:")
-    #pprint(fields)
+        # Get and print all available fields
+        print("Available form fields:")
+        fields = processor.get_form_fields()
+        from pprint import pprint
+        #pprint(fields)
 
-    # Fill the form and save
-    processor.fill_form(data, "filled_form.pdf")
+        # Fill the form and save
+        processor.fill_form(data, "filled_form.pdf")
+        print("\nForm has been filled and saved as 'filled_form.pdf'")
+
+        # Optional: Convert to images and extract text
+        image_paths = processor.convert_to_images()
+        print(f"\nConverted PDF to images: {image_paths}")
+
+
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
+
 
