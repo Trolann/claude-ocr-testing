@@ -4,6 +4,7 @@ import pytesseract
 from pdf2image import convert_from_path
 from PyPDF2 import PdfReader
 import os
+from collections import OrderedDict
 
 
 class PDFProcessor:
@@ -79,19 +80,30 @@ class PDFProcessor:
         pdfrw.PdfWriter().write(output_path, template)
 
     def get_form_fields(self):
-        """Return a dictionary of all fillable form fields with human-readable names."""
-        fields = {}
+        """Return an ordered dictionary of all fillable form fields with human-readable names."""
+        fields = OrderedDict()
 
-        for page in self.template_pdf.pages:
+        for page_num, page in enumerate(self.template_pdf.pages):
             if page.Annots:
-                for annotation in page.Annots:
-                    if annotation.T:
-                        raw_key = str(annotation.T)
-                        decoded_key = self.decode_pdf_field_name(raw_key)
-                        if annotation.V:
-                            fields[decoded_key] = str(annotation.V)
-                        else:
-                            fields[decoded_key] = ""
+                # Sort annotations by their vertical position (top to bottom)
+                annotations = []
+                for annot in page.Annots:
+                    if annot.T and hasattr(annot, 'Rect'):
+                        # Get the y-coordinate (vertical position) from the annotation rectangle
+                        y_pos = float(annot.Rect[1])
+                        annotations.append((y_pos, annot))
+                
+                # Sort by y-position in descending order (top to bottom)
+                annotations.sort(key=lambda x: x[0], reverse=True)
+                
+                # Process sorted annotations
+                for _, annotation in annotations:
+                    raw_key = str(annotation.T)
+                    decoded_key = self.decode_pdf_field_name(raw_key)
+                    if annotation.V:
+                        fields[decoded_key] = str(annotation.V)
+                    else:
+                        fields[decoded_key] = ""
 
         return fields
 
