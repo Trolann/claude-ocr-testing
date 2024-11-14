@@ -74,9 +74,10 @@ class PDFProcessor:
                 for annotation in page.Annots:
                     if annotation.T and str(annotation.T) in encoded_data:
                         value = encoded_data[str(annotation.T)]
-                        if value in ['/1', '/0', '/Off']:  # Checkbox values
-                            # Set both the value and appearance state for checkboxes
-                            annotation.update(pdfrw.PdfDict(V=value, AS=value if value == '/1' else '/Off'))
+                        if value in ['Yes', 'On', True, '/1']:  # Checkbox checked
+                            annotation.update(pdfrw.PdfDict(V='/Yes', AS='/Yes'))
+                        elif value in ['No', 'Off', False, '/0', '/Off']:  # Checkbox unchecked
+                            annotation.update(pdfrw.PdfDict(V='/Off', AS='/Off'))
                         else:  # Text fields
                             annotation.update(pdfrw.PdfDict(V=value))
                         annotation.update(pdfrw.PdfDict(AP=''))
@@ -154,8 +155,8 @@ class PDFProcessor:
 if __name__ == "__main__":
     # Initialize processor with your fillable PDF
     data = OrderedDict([
-        ('TypeOfBenefitsApplyingFor', '/1'),
-        ('TypeOfBenefitsApplyingFor[1]', '/Off'),
+        ('TypeOfBenefitsApplyingFor', 'Yes'),
+        ('TypeOfBenefitsApplyingFor[1]', 'Off'),
         ('MothersMaidenName', ''),
         ('LastFirstMiddle', ''),
         ('PreferredNameForVeteran', ''),
