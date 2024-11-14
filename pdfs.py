@@ -3,6 +3,7 @@ import pdf2image
 import pytesseract
 from pdf2image import convert_from_path
 from PyPDF2 import PdfReader
+from PyPDF2.generic import NameObject
 import os
 from collections import OrderedDict
 
@@ -75,9 +76,9 @@ class PDFProcessor:
                     if annotation.T and str(annotation.T) in encoded_data:
                         value = encoded_data[str(annotation.T)]
                         if value in ['Yes', 'On', True, '/1']:  # Checkbox checked
-                            annotation.update(pdfrw.PdfDict(V='/Yes', AS='/Yes'))
+                            annotation.update(pdfrw.PdfDict(V=NameObject('/Yes'), AS=NameObject('/Yes')))
                         elif value in ['No', 'Off', False, '/0', '/Off']:  # Checkbox unchecked
-                            annotation.update(pdfrw.PdfDict(V='/Off', AS='/Off'))
+                            annotation.update(pdfrw.PdfDict(V=NameObject('/Off'), AS=NameObject('/Off')))
                         else:  # Text fields
                             annotation.update(pdfrw.PdfDict(V=value))
                         annotation.update(pdfrw.PdfDict(AP=''))
